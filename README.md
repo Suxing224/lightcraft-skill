@@ -61,10 +61,10 @@ open -a "LightCraft" --args --control 7980
 
 ```bash
 # WorkBuddy（工作区级）
-git clone https://github.com/<you>/lightcraft-skill.git .workbuddy/skills/lightcraft
+git clone https://github.com/Suxing224/lightcraft-skill.git .workbuddy/skills/lightcraft
 
 # Claude Code（用户级）
-git clone https://github.com/<you>/lightcraft-skill.git ~/.claude/skills/lightcraft
+git clone https://github.com/Suxing224/lightcraft-skill.git ~/.claude/skills/lightcraft
 ```
 
 不想用 MCP 也行——其他 agent 只要支持「读一份 SKILL.md 当上下文」，把它指向本文件即可。

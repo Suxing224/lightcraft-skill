@@ -64,10 +64,10 @@ Two more bits:
 
 ```bash
 # WorkBuddy (per workspace)
-git clone https://github.com/<you>/lightcraft-skill.git .workbuddy/skills/lightcraft
+git clone https://github.com/Suxing224/lightcraft-skill.git .workbuddy/skills/lightcraft
 
 # Claude Code (per user)
-git clone https://github.com/<you>/lightcraft-skill.git ~/.claude/skills/lightcraft
+git clone https://github.com/Suxing224/lightcraft-skill.git ~/.claude/skills/lightcraft
 ```
 
 Any agent that can read a `SKILL.md` as context will work — just point it here.
