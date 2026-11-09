@@ -9,20 +9,33 @@ agent：（导入 → 读 EXIF → 调参 → 截屏自查 → 迭代 → 导出
 
 ## 为什么有这个东西
 
-LightCraft 社区已经有几个 agent 集成方案，但**全部要经过 MCP**：
+LightCraft 已经有一套相当完整的 agent 接口，主流做法是**全部经过 MCP**：
 
 | 方案 | 驱动方式 | 前置依赖 |
 |---|---|---|
 | [ai-2070/claude-storytold-skills](https://github.com/ai-2070/claude-storytold-skills) | MCP | 装 `lightcraft-cli` + 配 MCP 客户端 |
 | [jhonsu01/lightcraft-mcp-server](https://github.com/jhonsu01/lightcraft-mcp-server) | 第三方 Node MCP | Node ≥ 20 + LightCraft |
-| LightCraft 自带 `lightcraft-cli mcp` | 官方 MCP | 装 CLI |
+| **LightCraft 自带 `lightcraft-cli mcp`** | **官方 MCP，最好用** | 装 CLI |
 | **本项目** | CLI + **直接连控制通道** | 有 LightCraft 就行 |
 
 本项目建立在第一行之上（`references/` 直接来自它），但执行层完全重写：
 
-1. **双引擎，分工明确** —— 需要看画面走控制通道（有 `ui.screenshot`，调色时能自查），闷头批量走 CLI headless。**关键点：CLI 没有截图能力，瞎调等于赌博。**
+1. **双引擎，分工明确** —— 需要看画面走控制通道（`ui.screenshot`，改动在用户眼前实时可见），闷头批量走 CLI headless。
 2. **可溯源** —— `scripts/which-mode.sh` 靠对比两个库的 `catalog.snap` 时间戳，回答"上一次调色到底走的是哪条路"。两条路产出的图一模一样，只有过程不同，所以必须留痕。
-3. **零依赖客户端** —— `scripts/lc.py` 61 行纯标准库，直接说 JSON-lines 协议。不装任何东西就能连。
+3. **零依赖客户端** —— `scripts/lc.py` 100 行纯标准库，直接说 JSON-lines 协议。不装任何东西就能连。
+
+## 那为什么不直接用官方 MCP？
+
+好问题，而且**官方 MCP 在很多场景下确实更好**——它自带 `render_preview`，一次调用就返回图像内容块，不用落盘再读，自查效果比 CLI 方便。406 个工具（`--compact` 后 17 个）覆盖得也够全。
+
+它唯一的问题是**接入成本**：得写客户端配置、可能要重启会话、工具多会占上下文。所以本项目的定位不是替代它，而是：
+
+- **环境里没有 MCP 通道时**，本 skill 开箱即用，零配置
+- **需要用户亲眼看着改动发生**时（图就在他打开的 App 窗口里），控制通道比 MCP 顺手
+- **批量、无人值守**时，CLI 更直接，不用挂一个常驻服务
+
+如果你已经在用 MCP，本项目可以作为补充——`references/` 和 `examples/` 两边都通用。
+
 
 ## 安装
 

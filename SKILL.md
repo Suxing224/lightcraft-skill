@@ -15,9 +15,11 @@ LightCraft 是纯 Rust 写的开源 RAW 显影器（Lightroom 替代品），每
 | **CLI headless**（`lightcraft-cli`） | 批量、无人值守、脚本化 | 不开窗口、一条命令出图、最快 |
 | **App 控制通道**（`--control PORT`） | 单张精调、需要看效果 | 有 `ui.screenshot`，能截图自查 |
 
-> 关键区别：**CLI headless 没有 `ui.*` 方法**，看不见画面。
-> 精调必须看图 → 走控制通道；批量套参数不需要看 → 走 CLI。
-> 两者**不能同时打开同一个库**。
+> 关键区别（别搞混）：
+> - **CLI headless 没有 `ui.*` 方法**（截窗口那套只在 App 里有），但**不等于看不见画面**——
+>   `lightcraft-cli render` 出文件、官方 MCP 的 `render_preview` 直接返回图片，都能看。
+> - 控制通道的独特价值不是"能看图"，而是**图就在用户眼前那个窗口里**，改动实时可见。
+> - 两条路**不能同时打开同一个库**
 
 **已验证环境**（README 里的版本数据都来自这里，换环境请自己复测）：
 
@@ -108,6 +110,27 @@ python3 scripts/lc.py --port 7981 '<json>'
 
 回复 `{"id":1,"ok":true,"result":...}` 或 `{"ok":false,"error":"..."}`。
 另有 `ui.*` 方法（截图、点控件、改视图），走 `method` 直接调，不包 `engine.execute`。
+
+### C. 官方 MCP（第三种选择，看效果最省事）
+
+LightCraft 自带 MCP 服务器，不用第三方包装：
+
+```bash
+lightcraft-cli mcp                        # 内存库，退出即失效
+lightcraft-cli mcp --library ~/Pictures/lc-batch   # 持久库，编辑会保存
+lightcraft-cli mcp --demo                 # 演示库，24 张合成素材
+lightcraft-cli mcp --connect 7980         # 接管运行中的 App，此时 ui.* 也可用
+lightcraft-cli mcp --compact              # 只暴露 17 个高层工具
+```
+
+0.19.0 实测暴露 **406 个工具** = 17 个高层（`import` / `select_photos` / `set_develop` /
+`render_preview` / `export` 等）+ 389 个 `cmd_*` 逐命令包装。`--compact` 只留那 17 个。
+
+**`render_preview` 是它最好用的一点**：直接返回图像内容块（默认长边 1024，上限 4096），
+不用落盘再读，等于一次调用就能自查效果。
+
+它的代价是接入成本：要写 MCP 客户端配置、可能要重启会话，而且工具多会占上下文。
+**环境里没有 MCP 通道时，用 A 或 B；有了 MCP 通道，精调走它更顺手。**
 
 ## 三、标准流程
 

@@ -8,19 +8,19 @@ The primary docs (`SKILL.md`, `examples/prompts.md`) are written in Chinese. Thi
 
 Every existing agent integration for LightCraft goes through MCP and requires installing `lightcraft-cli` plus an MCP client. This project keeps the CLI path but adds a second one: it talks straight to the JSON-lines control socket that `lightcraft --control PORT` opens on `127.0.0.1`.
 
-That matters because **the two paths see different things**:
+To be fair to the official option: `lightcraft-cli mcp` is genuinely good. It exposes 406 tools (`--compact` trims that to 17) and its `render_preview` returns the rendered frame as an image content block in a single call. This project is not a replacement — it is the zero-config path for when no MCP channel is wired up:
 
-| Path | Can see the frame? | Best for |
+| Path | How you see the frame | Best for |
 |---|---|---|
-| `lightcraft-cli` (headless) | No | batch, cron, unattended runs |
-| control channel (`--control PORT`) | **Yes** — `ui.screenshot` | precise single-photo edits |
-
-Editing colour blind is a gamble. Use the channel when judgement is needed, the CLI when it is not.
+| `lightcraft-cli` headless | `render` to a file | batch, cron, unattended runs |
+| official MCP | `render_preview` returns an image | clients already set up for MCP |
+| control channel (`--control PORT`) | `ui.screenshot`, **live in the user's window** | edits the user watches happen |
+| `scripts/lc.py` | same socket, no config | this skill's zero-setup path |
 
 Two more bits:
 
 - `scripts/which-mode.sh` — both paths produce identical output, so it answers "which one actually ran last" by comparing the `catalog.snap` mtime in each library. Give the CLI its own library and the evidence is unambiguous.
-- `scripts/lc.py` — a 61-line stdlib-only client for the socket. Nothing to install.
+- `scripts/lc.py` — a ~100-line stdlib-only client for the socket. Nothing to install.
 
 ## Install
 
