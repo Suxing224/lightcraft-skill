@@ -1,28 +1,29 @@
 # lightcraft-skill
 
-在 Claude Code / WorkBuddy 这类 AI agent 里驱动本机 [LightCraft](https://github.com/storytold/lightcraft) 调色。
+**English** · [简体中文](README.zh-CN.md)
 
-**MCP 优先，另有三条降级路径。** 现成配置、实测过的坑、跟用户沟通的提示词写法——这些是官方仓库不会给的部分。
+Drive [LightCraft](https://github.com/storytold/lightcraft) from an AI agent. **MCP first, with three fallback paths.**
+
+What you get here that the official repo does not: a config that actually works, the traps we already stepped on, and a prompt formula for talking to the person behind the keyboard.
 
 ```
-用户：把 ~/Pictures/x.jpg 调一下，灰雾重，想清冷通透
-agent：（导入 → 读 EXIF → 调参 → 截屏自查 → 迭代 → 导出）给你看成片
+You:    adjust ~/Pictures/x.jpg — it's hazy, I want it crisp and cold
+Agent:  (import → read EXIF → set controls → preview → iterate → export)
+        here's the result
 ```
 
-## 为什么有这个东西
+## Why this exists
 
-LightCraft 官方自带的 MCP 服务器（`lightcraft-cli mcp`）相当完整——**本项目就用它**，因为实测下来它确实最好用。
+LightCraft ships a genuinely good MCP server (`lightcraft-cli mcp`), and this project uses it. It reaches the whole engine plus a 122-control develop surface. What it does not give you:
 
-但官方只给了接口，没给这些：
+1. **A config that works on the first try** — three flags, each one load-bearing
+2. **Bugs already stepped on** — `open --args` silently drops flags, `osascript quit` fails with `-10004`, `max_side` vs `maxSize`…
+3. **Fallback paths** — the CLI and the raw socket still earn their keep when MCP is unavailable, unsupported by your client, or just overkill
+4. **A way to talk to the user** — `examples/prompts.md`, a four-slot prompt formula. Good tooling still collapses on "make it look better"
 
-1. **一份能直接用的配置** —— 三个参数缺一不可，下面解释为什么
-2. **实测过的坑** —— `open --args` 传不进参数、`osascript quit` 报权限违例、`max_side` 和 `maxSize` 两套命名… 这些不踩一遍填不出来
-3. **降级路径** —— MCP 没配好、客户端不支持、或者只想闷头批量跑时，CLI 和原始 socket 都能顶上
-4. **跟用户沟通的方法** —— `examples/prompts.md`，四槽公式。工具再好，用户一句"调好看点"就废了
+`references/` are unmodified copies from [ai-2070/claude-storytold-skills](https://github.com/ai-2070/claude-storytold-skills).
 
-`references/` 来自 [ai-2070/claude-storytold-skills](https://github.com/ai-2070/claude-storytold-skills)，原封未动。
-
-## 配置：三个参数缺一不可
+## The config: three flags, none optional
 
 ```json
 {
@@ -35,113 +36,126 @@ LightCraft 官方自带的 MCP 服务器（`lightcraft-cli mcp`）相当完整�
 }
 ```
 
-| 参数 | 不写会怎样 |
+| Flag | If you drop it |
 |---|---|
-| `--connect 7980` | 不加就连不上你正在看的那个 App；写 `--library DIR` 则变成独立库（不带任何库参数 = **内存库，编辑退出即丢**） |
-| `--compact` | **工具数从 28 涨到 628**（600 个 `cmd_*` 包装），白烧上下文。加了也不损失能力——`command_run` 照样能调到全部命令 |
+| `--connect 7980` | You cannot reach the App you are looking at. Swap for `--library DIR` for a standalone library — and note that **no library flag at all means an in-memory library, so every edit is lost on exit** |
+| `--compact` | **Tool count jumps from 28 to 628** (600 `cmd_*` wrappers) and burns your context for zero extra reach — `command_run` still gets to every command |
 
-`--connect` 的好处是连不上也不会死：它只在 stderr 说 `will retry on each call`，所以可以常驻配置，App 没开时照样能启动。
+`--connect` degrades gracefully: with the App down it logs `will retry on each call` and keeps serving, so the server can sit in your config permanently.
 
-## 一条容易踩的启动坑
+## Two startup traps
 
 ```bash
-# ❌ open --args 常被 LaunchServices 吞掉：App 起来了，端口没开
+# BAD: LaunchServices often swallows the flag — App starts, port stays closed
 open -a "LightCraft" --args --control 7980
 
-# ✅ 直接跑二进制，参数一定传得进去
+# GOOD: run the binary directly, the flag always gets through
 "/Applications/LightCraft.app/Contents/MacOS/LightCraft" --control 7980 &
 ```
 
-关掉用 `pkill -TERM -f "LightCraft.app/Contents/MacOS/LightCraft"`——`osascript -e 'quit app "LightCraft"'` 会报 `-10004 权限违例`，关不掉。
+To shut it down use `pkill -TERM -f "LightCraft.app/Contents/MacOS/LightCraft"`. `osascript -e 'quit app "LightCraft"'` fails with `-10004` (privilege violation) and leaves the App running.
 
+## Four paths, and how each one sees the frame
 
-## 安装
+| Path | How you see the frame | Best for |
+|---|---|---|
+| official MCP, `--connect --compact` | `render_preview` (photo) and `ui_screenshot` (window) return images in one call | everyday editing — **the default** |
+| official MCP, `--library DIR` | same, against a standalone library | batch work that must persist |
+| `lightcraft-cli` headless | `render` to a file | cron, CI, unattended runs |
+| control channel via `scripts/lc.py` | `ui.screenshot` to a PNG | MCP unavailable, zero config, no resident process |
 
-两步：放 skill 目录，再把上面那段 `mcpServers` 合进你的 `mcp.json`，**重启会话**生效。
+Two details worth knowing:
+
+- `scripts/which-mode.sh` — every path produces identical pixels, so it answers "which one actually ran last" by comparing the `catalog.snap` mtime in each library. Give the CLI its own library and the evidence is unambiguous.
+- `scripts/lc.py` — a ~100-line stdlib-only client for the JSON-lines socket. Nothing to install, no config file.
+
+## Install
+
+Two steps: clone into your skills directory, then merge the `mcpServers` block above into your `mcp.json`. **Restart the session** for MCP to load.
 
 ```bash
-# WorkBuddy（工作区级）
+# WorkBuddy (per workspace)
 git clone https://github.com/Suxing224/lightcraft-skill.git .workbuddy/skills/lightcraft
 
-# Claude Code（用户级）
+# Claude Code (per user)
 git clone https://github.com/Suxing224/lightcraft-skill.git ~/.claude/skills/lightcraft
 ```
 
-不想用 MCP 也行——其他 agent 只要支持「读一份 SKILL.md 当上下文」，把它指向本文件即可。
+MCP is not mandatory. Any agent that can read a `SKILL.md` as context will work — point it at the file and skip the config entirely.
 
-## 前置条件
+## Requirements
 
-至少要有一样：桌面 App，或 CLI。两个都装最好——MCP 要 CLI，控制通道要 App。
+At least one of: the desktop App, or `lightcraft-cli`. Both is better — MCP needs the CLI, the control channel needs the App.
 
 ```bash
-# CLI —— 从 releases 下 lightcraft-cli-<ver>-macos-universal.zip
+# CLI — grab lightcraft-cli-<ver>-macos-universal.zip from the releases page
 unzip lightcraft-cli-*.zip
 cp */lightcraft-cli /usr/local/bin/ && chmod +x /usr/local/bin/lightcraft-cli
 
-# 桌面 App（注意：直接跑二进制，别用 open --args）
+# Desktop App — run the binary directly, not via open --args
 "/Applications/LightCraft.app/Contents/MacOS/LightCraft" --control 7980 &
 ```
 
-## 快速验证
+## Verify it works
 
 ```bash
-# 1. 控制通道通不通（直接 TCP 探测，别信 lsof）
+# 1. Is the control port actually open? Probe it — do not trust lsof
 python3 -c "import socket;s=socket.socket();print('open' if not s.connect_ex(('127.0.0.1',7980)) else 'closed')"
 
-# 2. 现在走哪条路、能不能调
+# 2. Which path ran last, and can you edit right now?
 bash scripts/which-mode.sh
 
-# 3. 一条命令渲染一张（不经过 MCP）
+# 3. Render one photo without going through MCP
 lightcraft-cli render in.jpg -o out.jpg --set effects.dehaze=15 --size 1600
 ```
 
-MCP 通不通，看会话工具列表里有没有这 28 个：`query_photos`、`select_photos`、`set_develop`、`render_preview`、`ui_screenshot`…
+For MCP, check your session's tool list for these 28: `query_photos`, `select_photos`, `set_develop`, `render_preview`, `ui_screenshot`, …
 
-## 已验证环境
+## Verified on
 
-README 和 SKILL.md 里的数字都来自这一次实测，**换环境请自己复测**：
+Every number in this README and in `SKILL.md` comes from one machine. **Re-check on yours.**
 
-| 项目 | 值 |
+| | |
 |---|---|
 | LightCraft App / CLI | 0.19.0 |
-| headless 命令 | 389 条 |
-| 调色控件 | **122 个**（与上游 0.9.1 文档一致，两年来没变） |
-| MCP 工具 | **28 个**（`--compact`）；不加该参数为 628 个 |
-| 平台 | macOS |
+| headless commands | 389 |
+| develop controls | **122** (matches the upstream 0.9.1 docs — unchanged in two years) |
+| MCP tools | **28** with `--compact`; 628 without it |
+| platform | macOS |
 
-未验证：Linux、Windows；LightCraft &lt; 0.19；AI 蒙版（依赖 SAM 3 模型，约 3.4 GB）。
+Untested: Linux, Windows, LightCraft &lt; 0.19, and AI masks (they need the SAM 3 model, ~3.4 GB).
 
-## 它不是什么
+## What it is not
 
-- **不是 Lightroom 替代品** —— LightCraft 才是，这里只是驱动它
-- **不做生成式修图** —— 降噪、超分、人像磨皮、老照片修复不在范围内，那是另一条技术路线
-- **不动原图** —— 全程引用式导入，调色参数存在 LightCraft 库里，随时可撤
+- **Not a Lightroom replacement** — LightCraft is; this only drives it
+- **Not generative retouching** — denoise, upscaling, portrait smoothing and old-photo repair are a different pipeline
+- **Never touches your originals** — imports are references, edits live in the LightCraft library and can be reverted at any time
 
-## 目录结构
+## Layout
 
 ```
-SKILL.md                 agent 读的主文档（中文）
+SKILL.md                 the main doc an agent reads (Chinese)
 references/
-  controls.md            122 个滑块的 id 与范围
-  commands.md            371 条命令签名
+  controls.md            122 develop controls: ids and ranges
+  commands.md            371 command signatures
 scripts/
-  lc.py                  控制通道客户端（零依赖，MCP 不可用时兜底）
-  which-mode.sh          CLI / App 路径自检
+  lc.py                  control-channel client (no deps, MCP fallback)
+  which-mode.sh          CLI / App path self-check
 examples/
-  prompts.md             怎么跟用户要提示词（四槽公式）
+  prompts.md             how to ask a user for a usable prompt
 ```
 
-## 已知限制
+## Known limits
 
-- 每条命令的参数格式在 0.19 上是实测过的，跨版本可能变——先 `lightcraft-cli run engine.commands` 核对
-- `which-mode.sh` 的时间戳判断依赖你给 CLI 配了**独立库**；共用一个库就分不出来
-- 控制端口无认证，只绑回环。收工务必关掉 App
-- MCP 配置改了必须重启会话才生效；`--connect` 依赖 App 带着 `--control` 跑着
+- Command argument formats are verified on 0.19 and may drift — check with `lightcraft-cli run engine.commands` first
+- `which-mode.sh` relies on the CLI having **its own library**; share one library and the mtime tells you nothing
+- The control port has no authentication and binds to loopback only. Close the App when you are done
+- MCP config changes need a session restart; `--connect` needs the App running with `--control`
 
-## 许可
+## License
 
-MIT。`references/*.md` 来自 [ai-2070/claude-storytold-skills](https://github.com/ai-2070/claude-storytold-skills)（MIT，Copyright © 2026 V and contributors），原封未动，署名见 [LICENSE](LICENSE)。
+MIT. `references/*.md` are unmodified copies from [ai-2070/claude-storytold-skills](https://github.com/ai-2070/claude-storytold-skills) (MIT, Copyright © 2026 V and contributors). Attribution in [LICENSE](LICENSE).
 
-## 贡献
+## Contributing
 
-最需要的是**跨环境复测**：Linux / Windows 的路径与进程检测、0.18 及更早版本的命令差异、非英文 locale 下的文件名处理。开 issue 说清版本和平台就行。
+The most useful thing you can send is **a report from a different environment**: Linux or Windows path and process detection, command diffs on 0.18 and older, filename handling under non-UTF-8 locales. Open an issue with your version and platform.
